@@ -293,13 +293,13 @@ package eu.starsong.ghidra.endpoints;
                         Listing listing = program.getListing();
                         Data data = listing.getDefinedDataAt(addr);
                         
-                        if (data == null) {
-                            throw new Exception("No defined data found at address: " + addressStr);
+                        if (data == null && dataTypeStr != null && !dataTypeStr.isEmpty()) {
+                            throw new Exception("No defined data found at address: " + addressStr + ". Create data first before changing type.");
                         }
                         
                         // Get current data info for operations that need it
                         String currentName = null;
-                        if (data.getLabel() != null) {
+                        if (data != null && data.getLabel() != null) {
                             currentName = data.getLabel();
                         } else {
                             Symbol sym = program.getSymbolTable().getPrimarySymbol(addr);
@@ -451,10 +451,16 @@ package eu.starsong.ghidra.endpoints;
                         successFlag.set(true);
                     }
                 } else {
-                     throw new Exception("No defined data found at address: " + addressStr);
+                     // No defined data — still allow creating a label at any valid address
+                     SymbolTable symTable = program.getSymbolTable();
+                     Symbol symbol = symTable.getPrimarySymbol(addr);
+                     if (symbol != null) {
+                         symbol.setName(newName, SourceType.USER_DEFINED);
+                     } else {
+                         symTable.createLabel(addr, newName, SourceType.USER_DEFINED);
+                     }
+                     successFlag.set(true);
                 }
-            } catch (ghidra.program.model.address.AddressFormatException afe) {
-                 throw new Exception("Invalid address format: " + addressStr, afe);
             } catch (ghidra.util.exception.InvalidInputException iie) {
                  throw new Exception("Invalid name: " + newName, iie);
             } catch (Exception e) { // Catch other potential Ghidra exceptions
@@ -511,7 +517,34 @@ package eu.starsong.ghidra.endpoints;
                         Data data = listing.getDefinedDataAt(addr);
                         
                         if (data == null) {
-                            throw new Exception("No defined data found at address: " + addressStr);
+                            // No defined data — create new data with the requested type directly
+                            ghidra.program.model.data.DataType dataType = null;
+                            dataType = program.getDataTypeManager().getDataType("/" + dataTypeStr);
+                            if (dataType == null) {
+                                dataType = program.getDataTypeManager().findDataType("/" + dataTypeStr);
+                            }
+                            if (dataType == null) {
+                                try {
+                                    ghidra.app.util.parser.FunctionSignatureParser parser = 
+                                        new ghidra.app.util.parser.FunctionSignatureParser(program.getDataTypeManager(), null);
+                                    dataType = parser.parse(null, dataTypeStr);
+                                } catch (Exception e) {
+                                    Msg.debug(this, "Function signature parser failed: " + e.getMessage());
+                                }
+                            }
+                            if (dataType == null) {
+                                throw new Exception("Could not find or parse data type: " + dataTypeStr);
+                            }
+                            int newLength = dataType.getLength();
+                            if (newLength > 0) {
+                                listing.clearCodeUnits(addr, addr.add(newLength - 1), false);
+                            }
+                            Data newData = listing.createData(addr, dataType);
+                            if (newData == null) {
+                                throw new Exception("Failed to create data with type " + dataTypeStr);
+                            }
+                            resultMap.put("originalType", "undefined");
+                            return null;
                         }
                         
                         // Get current name to preserve after type change

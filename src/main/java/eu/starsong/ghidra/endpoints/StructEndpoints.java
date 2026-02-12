@@ -859,11 +859,64 @@ public class StructEndpoints extends AbstractEndpoint {
                 case "double":
                     dataType = new DoubleDataType();
                     break;
+                case "short":
+                    dataType = new ShortDataType();
+                    break;
                 case "int":
                     dataType = new IntegerDataType();
                     break;
                 case "long":
                     dataType = new LongDataType();
+                    break;
+                case "longlong":
+                    dataType = new LongLongDataType();
+                    break;
+                case "ushort":
+                case "uint16_t":
+                    dataType = new UnsignedShortDataType();
+                    break;
+                case "uint":
+                case "uint32_t":
+                    dataType = new UnsignedIntegerDataType();
+                    break;
+                case "ulong":
+                    dataType = new UnsignedLongDataType();
+                    break;
+                case "uchar":
+                case "uint8_t":
+                    dataType = new UnsignedCharDataType();
+                    break;
+                case "int8_t":
+                    dataType = new SignedByteDataType();
+                    break;
+                case "int16_t":
+                    dataType = new ShortDataType();
+                    break;
+                case "int32_t":
+                    dataType = new IntegerDataType();
+                    break;
+                case "int64_t":
+                    dataType = new LongLongDataType();
+                    break;
+                case "uint64_t":
+                    dataType = new UnsignedLongLongDataType();
+                    break;
+                case "bool":
+                case "boolean":
+                    dataType = new BooleanDataType();
+                    break;
+                case "undefined":
+                case "undefined1":
+                    dataType = new Undefined1DataType();
+                    break;
+                case "undefined2":
+                    dataType = new Undefined2DataType();
+                    break;
+                case "undefined4":
+                    dataType = new Undefined4DataType();
+                    break;
+                case "undefined8":
+                    dataType = new Undefined8DataType();
                     break;
                 case "pointer":
                     dataType = new PointerDataType();

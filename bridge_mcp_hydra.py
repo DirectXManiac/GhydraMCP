@@ -2214,8 +2214,8 @@ def memory_write(address: str, bytes_data: str, format: str = "hex", port: int =
         "format": format
     }
     
-    # Memory write is handled by ProgramEndpoints, not MemoryEndpoints
-    response = safe_patch(port, f"programs/current/memory/{address}", payload)
+    # Memory write via PATCH /memory/{address}
+    response = safe_patch(port, f"memory/{address}", payload)
     return simplify_response(response)
 
 # Xrefs tools

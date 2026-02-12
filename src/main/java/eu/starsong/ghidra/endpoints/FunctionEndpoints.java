@@ -8,9 +8,11 @@ import eu.starsong.ghidra.model.FunctionInfo;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.HttpUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.framework.plugintool.PluginTool;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.listing.Function;
@@ -517,15 +519,32 @@ public class FunctionEndpoints extends AbstractEndpoint {
              return;
         }
         
-        // Check if function already exists
+        // Check if function already exists at this exact address
         if (program.getFunctionManager().getFunctionAt(address) != null) {
             sendErrorResponse(exchange, 409, "Function already exists at address: " + addressStr, "FUNCTION_EXISTS");
             return;
         }
         
-        // Use CreateFunctionCmd — same as pressing F in the UI
+        // Check if address is inside the body of another function
+        Function containing = program.getFunctionManager().getFunctionContaining(address);
+        if (containing != null) {
+            sendErrorResponse(exchange, 409, 
+                "Address " + addressStr + " is inside function " + containing.getName() + 
+                " at " + containing.getEntryPoint() + ". Remove or split the existing function first.", 
+                "ADDRESS_IN_EXISTING_FUNCTION");
+            return;
+        }
+        
+        // Disassemble first (like pressing D in the UI), then create function (like pressing F)
         try {
             Function function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
+                // Step 1: Ensure code units exist by disassembling at the address
+                if (program.getListing().getInstructionAt(address) == null) {
+                    DisassembleCommand disCmd = new DisassembleCommand(address, null, true);
+                    disCmd.applyTo(program);
+                }
+                
+                // Step 2: Create the function
                 ghidra.app.cmd.function.CreateFunctionCmd cmd =
                     new ghidra.app.cmd.function.CreateFunctionCmd(address);
                 if (!cmd.applyTo(program)) {
@@ -1013,15 +1032,32 @@ public class FunctionEndpoints extends AbstractEndpoint {
             return;
         }
         
-        // Check if function already exists
+        // Check if function already exists at this exact address
         if (program.getFunctionManager().getFunctionAt(address) != null) {
             sendErrorResponse(exchange, 409, "Function already exists at address: " + addressStr, "FUNCTION_EXISTS");
             return;
         }
 
-        // Use CreateFunctionCmd — same as pressing F in the UI
+        // Check if address is inside the body of another function
+        Function containing = program.getFunctionManager().getFunctionContaining(address);
+        if (containing != null) {
+            sendErrorResponse(exchange, 409, 
+                "Address " + addressStr + " is inside function " + containing.getName() + 
+                " at " + containing.getEntryPoint() + ". Remove or split the existing function first.", 
+                "ADDRESS_IN_EXISTING_FUNCTION");
+            return;
+        }
+
+        // Disassemble first (like pressing D in the UI), then create function (like pressing F)
         try {
             Function function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
+                // Step 1: Ensure code units exist by disassembling at the address
+                if (program.getListing().getInstructionAt(address) == null) {
+                    DisassembleCommand disCmd = new DisassembleCommand(address, null, true);
+                    disCmd.applyTo(program);
+                }
+                
+                // Step 2: Create the function
                 ghidra.app.cmd.function.CreateFunctionCmd cmd =
                     new ghidra.app.cmd.function.CreateFunctionCmd(address);
                 if (!cmd.applyTo(program)) {

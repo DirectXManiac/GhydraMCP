@@ -225,13 +225,21 @@ private void handleMemoryAddressRequest(HttpExchange exchange) throws IOExceptio
         
         // Otherwise, treat as a direct memory request with address in the path
         String addressStr = remainingPath;
+        String method = exchange.getRequestMethod();
+        
+        // Handle PATCH for memory write
+        if ("PATCH".equals(method) || "POST".equals(method)) {
+            handleMemoryWrite(exchange, addressStr);
+            return;
+        }
+        
         Map<String, String> params = parseQueryParams(exchange);
         
         // Handle same as the query parameter version
         params.put("address", addressStr);
         exchange.setAttribute("address", addressStr);
         
-        // Delegate to the main memory handler
+        // Delegate to the main memory handler (GET)
         handleMemoryRequest(exchange);
     } catch (Exception e) {
         Msg.error(this, "Error handling memory address endpoint", e);
@@ -377,6 +385,106 @@ private CommentType getCommentType(String commentType) {
             return CommentType.REPEATABLE;
         default:
             return CommentType.PLATE;
+    }
+}
+
+/**
+ * Handle PATCH/POST to /memory/{address} — write bytes to memory
+ */
+private void handleMemoryWrite(HttpExchange exchange, String addressStr) throws IOException {
+    try {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+            return;
+        }
+        
+        Map<String, String> params = parseJsonPostParams(exchange);
+        String bytesData = params.get("bytes");
+        String format = params.getOrDefault("format", "hex");
+        
+        if (bytesData == null || bytesData.isEmpty()) {
+            sendErrorResponse(exchange, 400, "bytes parameter is required", "MISSING_PARAMETER");
+            return;
+        }
+        
+        // Parse address
+        AddressFactory addressFactory = program.getAddressFactory();
+        Address address;
+        try {
+            address = addressFactory.getAddress(addressStr);
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 400, "Invalid address format: " + addressStr, "INVALID_ADDRESS");
+            return;
+        }
+        
+        // Convert input to byte array
+        byte[] bytes;
+        try {
+            switch (format.toLowerCase()) {
+                case "hex":
+                    // Parse hex string (e.g. "48656C6C6F")
+                    String hex = bytesData.replaceAll("\\s+", "");
+                    if (hex.length() % 2 != 0) {
+                        sendErrorResponse(exchange, 400, "Hex string must have even length", "INVALID_PARAMETER");
+                        return;
+                    }
+                    bytes = new byte[hex.length() / 2];
+                    for (int i = 0; i < bytes.length; i++) {
+                        bytes[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+                    }
+                    break;
+                case "base64":
+                    bytes = Base64.getDecoder().decode(bytesData);
+                    break;
+                case "string":
+                    bytes = bytesData.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    break;
+                default:
+                    sendErrorResponse(exchange, 400, "Unsupported format: " + format + ". Use hex, base64, or string.", "INVALID_PARAMETER");
+                    return;
+            }
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 400, "Failed to parse bytes data: " + e.getMessage(), "INVALID_PARAMETER");
+            return;
+        }
+        
+        if (bytes.length == 0) {
+            sendErrorResponse(exchange, 400, "No bytes to write", "INVALID_PARAMETER");
+            return;
+        }
+        
+        if (bytes.length > MAX_MEMORY_LENGTH) {
+            sendErrorResponse(exchange, 400, "Write size " + bytes.length + " exceeds maximum " + MAX_MEMORY_LENGTH, "INVALID_PARAMETER");
+            return;
+        }
+        
+        // Write bytes in a transaction
+        final byte[] bytesToWrite = bytes;
+        final Address writeAddr = address;
+        TransactionHelper.executeInTransaction(program, "Write Memory", () -> {
+            Memory memory = program.getMemory();
+            memory.setBytes(writeAddr, bytesToWrite);
+            return null;
+        });
+        
+        // Build success response
+        Map<String, Object> result = new HashMap<>();
+        result.put("address", address.toString());
+        result.put("bytesWritten", bytes.length);
+        result.put("format", format);
+        
+        ResponseBuilder builder = new ResponseBuilder(exchange, port)
+            .success(true)
+            .result(result)
+            .addLink("self", "/memory/" + addressStr)
+            .addLink("memory", "/memory");
+        
+        sendJsonResponse(exchange, builder.build(), 200);
+        
+    } catch (Exception e) {
+        Msg.error(this, "Error writing memory at " + addressStr, e);
+        sendErrorResponse(exchange, 500, "Failed to write memory: " + e.getMessage(), "INTERNAL_ERROR");
     }
 }
 
