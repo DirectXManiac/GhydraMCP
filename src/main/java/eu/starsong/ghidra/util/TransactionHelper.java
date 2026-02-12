@@ -39,8 +39,10 @@ public class TransactionHelper {
                 } finally {
                     if (txId >= 0) {
                         if (!program.endTransaction(txId, success)) {
-                            Msg.error(TransactionHelper.class, "Failed to end transaction: " + transactionName);
-                            exception.set(new TransactionException("Failed to end transaction: " + transactionName));
+                            if (exception.get() == null) {
+                                Msg.error(TransactionHelper.class, "Failed to end transaction: " + transactionName);
+                                exception.set(new TransactionException("Failed to end transaction: " + transactionName));
+                            }
                         }
                     }
                 }
